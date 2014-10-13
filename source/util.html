@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>The source code</title>
+  <link href="../resources/prettify/prettify.css" type="text/css" rel="stylesheet" />
+  <script type="text/javascript" src="../resources/prettify/prettify.js"></script>
+  <style type="text/css">
+    .highlight { display: block; background-color: #ddd; }
+  </style>
+  <script type="text/javascript">
+    function highlight() {
+      document.getElementById(location.hash.replace(/#/, "")).className = "highlight";
+    }
+  </script>
+</head>
+<body onload="prettyPrint(); highlight();">
+  <pre class="prettyprint lang-js"><span id='Util'>/**
+</span> * @class  	Util
+ * @author  Flavio De Stefano &lt;flavio.destefano@caffeinalab.com&gt;
+ * Util module.
+ *
+ * All things that I don&#39;t know where to put, are here.
+ *
+ */
+
+var Dialog = require(&#39;T/dialog&#39;);
+
+
+<span id='Util-method-openURL'>/**
+</span> * Try to open the URL with `Ti.Platform.openURL`, catching errors.
+ *
+ * If can&#39;t open the primary argument (url), open the fallback.
+ *
+ * If can&#39;t open the fallback, and `error` is set, show the error dialog.
+ *
+ * @param  {String} url The URL to open
+ * @param  {String|Function} [fallback] If is a string, try to open the URL. If is a functions, call it.
+ * @param  {String} [error]    The error to show
+ */
+function openURL(url, fallback, error) {
+
+	function doFallback() {
+		if (fallback != null) {
+			if (_.isFunction(fallback)) fallback();
+			else if (_.isString(fallback)) Ti.Platform.openURL(fallback);
+		} else if (error != null) {
+			Dialog.alert(L(&#39;Error&#39;), error);
+		}
+	}
+
+	if (OS_IOS) {
+		if (Ti.Platform.canOpenURL(url) === true) {
+			Ti.Platform.openURL(url);
+		} else {
+			doFallback();
+		}
+	} else if (OS_ANDROID) {
+		try {
+			Ti.Platform.openURL(url);
+		} catch (err) {
+			doFallback();
+		}
+	}
+}
+exports.openURL = openURL;
+
+
+<span id='Util-method-startActivity'>/**
+</span> * Valid only on Android, start the activity catching any possible errors.
+ *
+ * If `error` is provided, show the error dialog with this message.
+ *
+ * @param  {Object} opt   Options for `createIntent(...)`
+ * @param  {String} [error] Error message
+ */
+function startActivity(opt, error) {
+	try {
+		Ti.Android.currentActivity.startActivity(Ti.Android.createIntent(opt));
+	} catch (ex) {
+		if (error != null) {
+			Dialog.alert(L(&#39;Error&#39;), error);
+		}
+	}
+}
+exports.startActivity = startActivity;
+
+
+<span id='Util-method-openFacebookProfile'>/**
+</span> * @method  openFacebookProfile
+ * Open a Facebook profile in the Facebook application
+ * @param  {String} fbid Facebook ID
+ */
+exports.openFacebookProfile = function(fbid) {
+	openURL(&#39;fb://profile/&#39; + fbid, &#39;https://facebook.com/&#39; + fbid);
+};
+
+
+<span id='Util-method-openTwitterProfile'>/**
+</span> * @method  openTwitterProfile
+ * Open a Twitter profile in the Twitter application
+ * @param  {String} twid Twitter screen name
+ */
+exports.openTwitterProfile = function(twid) {
+	return openURL(&#39;twitter://user?screen_name=&#39; + twid, &#39;http://twitter.com/&#39; + twid);
+};
+
+
+<span id='Util-method-openTwitterStatus'>/**
+</span> * @method  openTwitterStatus
+ * Open a Twitter status in the Twitter application
+ * @param  {String} userid   The user id
+ * @param  {String} statusid The status id
+ */
+exports.openTwitterStatus = function(userid, statusid) {
+	return openURL(&#39;twitter://status?id=&#39; + statusid, &#39;http://twitter.com/&#39; + userid + &#39;/statuses/&#39; + statusid);
+};
+
+
+<span id='Util-method-getFacebookAvatar'>/**
+</span> * Get the Facebook avatar from the graph
+ *
+ * @param  {String} fbid Facebook ID
+ * @param  {Number} [w]    Width
+ * @param  {Number} [h]    Height
+ * @return {String}      	The open graph url pointing to the image
+ */
+exports.getFacebookAvatar = function(fbid, w, h) {
+	return &#39;http://graph.facebook.com/&#39; + fbid + &#39;/picture/?width=&#39; + (w || 150) + &#39;&amp;height=&#39; + (h || 150);
+};
+
+<span id='Util-method-openInStore'>/**
+</span> * @method openInStore
+ * Open the iTunes Store or Google Play Store of specified appid
+ * @param {String} appid Application ID
+ */
+exports.openInStore = function(appid) {
+	if (OS_IOS) {
+		Ti.Platform.openURL(&#39;https://itunes.apple.com/app/id&#39; + appid);
+	} else if (OS_ANDROID) {
+		Ti.Platform.openURL(&#39;https://play.google.com/store/apps/details?id=&#39; + appid);
+	}
+};
+
+
+<span id='Util-method-getDomainFromURL'>/**
+</span> * @method  getDomainFromURL
+ * Return the clean domain of an URL
+ *
+ * @param  {String} url The URL to parse
+ * @return {String}     Clean domain
+ */
+exports.getDomainFromURL = function(url) {
+	var matches = url.match(/https?\:\/\/([^\/]*)/i);
+	if (matches == null || matches[1] == null) return &#39;&#39;;
+
+	return matches[1].replace(&#39;www.&#39;, &#39;&#39;);
+};
+
+<span id='Util-method-getIOSVersion'>/**
+</span> * Return the iOS major version
+ * @return {Number}
+ */
+function getIOSVersion() {
+	if (!OS_IOS) return false;
+	return parseInt(Ti.Platform.version.split(&#39;.&#39;)[0], 10);
+}
+exports.getIOSVersion = getIOSVersion;
+
+<span id='Util-method-isIOS6'>/**
+</span> * Check if is iOS 6
+ * @return {Boolean}
+ */
+function isIOS6() {
+	return getIOSVersion() === 6;
+}
+exports.isIOS6 = isIOS6;
+
+
+<span id='Util-method-isIOS7'>/**
+</span> * Check if is iOS
+ * @return {Boolean}
+ */
+function isIOS7() {
+	return getIOSVersion() === 7;
+}
+exports.isIOS7 = isIOS7;
+
+<span id='Util-method-isIOS8'>/**
+</span> * Check if is iOS 8
+ * @return {Boolean}
+ */
+function isIOS8() {
+	return getIOSVersion() === 8;
+}
+exports.isIOS8 = isIOS8;
+
+<span id='Util-method-isSimulator'>/**
+</span> * Check if current device is a Simulator
+ * @return {Boolean}
+ */
+function isSimulator() {
+	return Ti.Platform.model === &#39;Simulator&#39; || Ti.Platform.model.indexOf(&#39;sdk&#39;) !== -1;
+}
+exports.isSimulator = isSimulator;
+
+<span id='Util-method-parseSchema'>/**
+</span> * Parse the initial arguments URL schema
+ *
+ * @return {String}
+ */
+exports.parseSchema = function() {
+	if (OS_IOS) {
+		var cmd = Ti.App.getArguments();
+		if (cmd.url != null) return cmd.url;
+	} else if (OS_ANDROID) {
+		var url = Ti.Android.currentActivity.intent.data;
+		if (url != null) return url;
+	}
+	return &#39;&#39;;
+};
+
+
+<span id='Util-method-timestamp'>/**
+</span> * @method timestamp
+ * Get the UNIX timestamp.
+ *
+ * @param  {String} [t]  The date to parse. If is not provided, get current timestamp.
+ * @return {Number}
+ */
+function timestamp(t) {
+	var ts = new Date(t).getTime() / 1000;
+	if (!_.isNumber(ts)) return 0;
+	return parseInt(ts, 10);
+}
+exports.timestamp = timestamp;
+
+
+<span id='Util-method-now'>/**
+</span> * @method now
+ * Get the current UNIX timestamp.
+ * @return {Number}
+ */
+function now() {
+	return timestamp(new Date());
+}
+exports.now = now;
+
+
+<span id='Util-method-fromnow'>/**
+</span> * @method fromnow
+ * Get the UNIX timestamp from now with delay expressed in seconds.
+ *
+ * @param  {Number} [t]  Seconds from now.
+ * @return {Number}
+ */
+exports.fromnow = function(t) {
+	return timestamp( new Date().getTime() + t*1000 );
+};
+
+<span id='Util-method-timestampForHumans'>/**
+</span> * @method timestampForHumans
+ * Return in human readable format a timestamp
+ * @param  {Number} ts The timestamp
+ * @return {String}
+ */
+exports.timestampForHumans = function(ts) {
+	var moment = require(&#39;T/ext/moment&#39;);
+	return moment(ts*1000).format();
+};
+
+
+<span id='Util-method-parseJSON'>/**
+</span> * @method parseJSON
+ * Try to parse a JSON, and silently fail on error, returning a `null` in this case.
+ *
+ * @param  {String} json 		The JSON to parse.
+ * @return {Object}
+ */
+exports.parseJSON = function(json) {
+	try {
+		return JSON.parse(json) || null;
+	} catch (ex) {
+		return null;
+	}
+};
+
+
+<span id='Util-method-buildQuery'>/**
+</span> * @method buildQuery
+ * Generate URL-encoded query string.
+ *
+ * @param  {Object} obj Object key-value to parse.
+ * @return {String}
+ */
+exports.buildQuery = function(obj) {
+	if (_.isEmpty(obj)) return &#39;&#39;;
+
+	var q = [];
+	_.each(obj, function(v, k) {
+		if (v != null) {
+			q.push(k + &#39;=&#39; + encodeURIComponent(v));
+		}
+	});
+	if (q.length === 0) return &#39;&#39;;
+
+	return &#39;?&#39; + q.join(&#39;&amp;&#39;);
+};
+
+
+<span id='Util-method-getAppDataDirectory'>/**
+</span> * @method  getAppDataDirectory
+ * Return the app-data directory.
+ *
+ * @return {String}
+ */
+exports.getAppDataDirectory = function() {
+	if (Ti.Filesystem.isExternalStoragePresent() === true) {
+		return Ti.Filesystem.externalStorageDirectory;
+	}
+	return Ti.Filesystem.applicationDataDirectory;
+};
+
+
+<span id='Util-method-dialog'>/**
+</span> * @method  dialog
+ * Dial a number.
+ *
+ * @param  {String} tel The number to call.
+ */
+exports.dial = function(tel) {
+	var telString = tel.match(/[0-9]/g).join(&#39;&#39;);
+	var errString = String.format(L(&#39;util_dial_failed&#39;), tel);
+	if (OS_IOS) {
+		openURL(&#39;tel:&#39; + telString, null, errString);
+	} else if (OS_ANDROID) {
+		startActivity({
+			action: Ti.Android.ACTION_CALL,
+			data: &#39;tel:&#39; + telString
+		}, errString);
+	}
+};
+
+
+<span id='Util-method-isAppFirstUsage'>/**
+</span> * @method isAppFirstUsage
+ * Check if the first open of the app.
+ *
+ * Call @{@link #setAppFirstUsage} to set the first usage of the app.
+ *
+ * @return {Boolean}
+ */
+exports.isAppFirstUsage = function() {
+	return ! Ti.App.Properties.hasProperty(&#39;app.firstusage&#39;);
+};
+
+
+<span id='Util-method-setAppFirstUsage'>/**
+</span> * @method setAppFirstUsage
+ * Set the app first usage date.
+ *
+ * Use in conjunction with {@link #isAppFirstUsage}
+ *
+ */
+exports.setAppFirstUsage = function() {
+	Ti.App.Properties.setString(&#39;app.firstusage&#39;, now());
+};
+
+
+<span id='Util-method-facebookGraphWithAppToken'>/**
+</span> * @method facebookGraphWithAppToken
+ * Call the graph using app token.
+ *
+ * @param  {String}   path     The path for the open graph request.
+ * @param  {Object}   object   The data for the open graph request.
+ * @param  {Object}   opt      The options.
+ * Required options are:
+ * * **appid**: Application ID
+ * * **appsecret**: Application secret
+ * * **[expire]**: Cache the request for specified seconds.
+ * * **[error]**: Error callback
+ * @param  {Function} callback Success callback
+ */
+exports.facebookGraphWithAppToken = function(path, obj, opt, callback) {
+	obj = obj || {};
+	obj.access_token = opt.appid + &#39;|&#39; + opt.appsecret;
+
+	require(&#39;T/http&#39;).send({
+		url: &#39;https://graph.facebook.com/&#39; + path.replace(/^\//, &#39;&#39;),
+		data: obj,
+		format: &#39;json&#39;,
+		refresh: opt.refresh,
+		expire: opt.expire,
+		silent: opt.silent,
+		error: opt.error,
+		success: callback
+	});
+};
+
+<span id='Util-method-parseAsXCallbackURL'>/**
+</span> * @method parseAsXCallbackURL
+ * @param  {String} 	url  The URL to parse
+ * @return {XCallbackURL}
+ */
+
+var XCU = {
+	key: [&#39;source&#39;, &#39;protocol&#39;, &#39;authority&#39;, &#39;userInfo&#39;, &#39;user&#39;, &#39;password&#39;, &#39;host&#39;, &#39;port&#39;, &#39;relative&#39;, &#39;path&#39;, &#39;directory&#39;, &#39;file&#39;, &#39;query&#39;, &#39;anchor&#39;],
+	q: {
+		name: &#39;queryKey&#39;,
+		parser: /(?:^|&amp;)([^&amp;=]*)=?([^&amp;]*)/g
+	},
+	parser: {
+		strict: /^(?:([^:\/?#]+):)?(?:\/\/((?:(([^:@]*)(?::([^:@]*))?)?@)?([^:\/?#]*)(?::(\d*))?))?((((?:[^?#\/]*\/)*)([^?#]*))(?:\?([^#]*))?(?:#(.*))?)/,
+		loose: /^(?:(?![^:@]+:[^:@\/]*@)([^:\/?#.]+):)?(?:\/\/)?((?:(([^:@]*)(?::([^:@]*))?)?@)?([^:\/?#]*)(?::(\d*))?)(((\/(?:[^?#](?![^?#\/]*\.[^?#\/.]+(?:[?#]|$)))*\/?)?([^?#\/]*))(?:\?([^#]*))?(?:#(.*))?)/
+	}
+};
+
+exports.parseAsXCallbackURL = function(str) {
+	var m = XCU.parser.strict.exec(str);
+	var i = XCU.key.length;
+	var uri = {};
+
+	while (i--) uri[XCU.key[i]] = m[i] || &#39;&#39;;
+	uri[XCU.q.name] = {};
+	uri[XCU.key[12]].replace(XCU.q.parser, function($0, $1, $2) {
+		if ($1) uri[XCU.q.name][$1] = $2;
+	});
+
+	return uri;
+};
+
+exports.hashJavascriptObject = function(obj) {
+	if (obj == null) return &#39;null&#39;;
+	if (_.isArray(obj)) return JSON.stringify(obj);
+	if (_.isObject(obj)) {
+		var keys = _.keys(obj).sort();
+		return JSON.stringify(_.object(keys, _.map(keys, function (key) { return obj[key]; })));
+	}
+	return obj.toString();
+};</pre>
+</body>
+</html>

@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>The source code</title>
+  <link href="../resources/prettify/prettify.css" type="text/css" rel="stylesheet" />
+  <script type="text/javascript" src="../resources/prettify/prettify.js"></script>
+  <style type="text/css">
+    .highlight { display: block; background-color: #ddd; }
+  </style>
+  <script type="text/javascript">
+    function highlight() {
+      document.getElementById(location.hash.replace(/#/, "")).className = "highlight";
+    }
+  </script>
+</head>
+<body onload="prettyPrint(); highlight();">
+  <pre class="prettyprint lang-js"><span id='Auth'>/**
+</span> * @class  Auth
+ * @author  Flavio De Stefano &lt;flavio.destefano@caffeinalab.com&gt;
+ * Authentication module interfaced with an API server
+ *
+ * This module works with global events.
+ *
+ * Listen for
+ *
+ * * `auth.success`: Login success
+ * * `auth.fail`: Login failed
+ * * `auth.logut`: User want to logout
+ * * `auth.login`: The app has no stored credentials
+ *
+ * then just call `T(&#39;auth&#39;).handle()` in the `alloy.js`
+ * file and wait for one of 4 events.
+ *
+ */
+
+var config = _.extend({
+}, Alloy.CFG.T.auth);
+exports.config = config;
+
+var HTTP = require(&#39;T/http&#39;);
+var Event = require(&#39;T/event&#39;);
+
+<span id='Auth-property-Me'>/**
+</span> * @property Me
+ * Current user model
+ * @type {Backbone.Model}
+ */
+exports.Me = null;
+
+<span id='Auth-property-authInfo'>/**
+</span> * @property authInfo
+ * Authentication info processed during login
+ * @type {Object}
+ */
+exports.authInfo = null; // auth info stored
+
+
+<span id='Auth-method-load'>/**
+</span> * Require the selected driver
+ *
+ * @param  {String} driver The driver
+ * @return {Object}
+ */
+function load(driver) {
+	return require(&#39;T/auth/&#39;+driver);
+}
+exports.load = load;
+
+
+<span id='Auth-method-getCurrentDriver'>/**
+</span> * Get the stored driver as String
+ *
+ * @return {String}
+ */
+function getCurrentDriver(){
+	if (Ti.App.Properties.hasProperty(&#39;auth.driver&#39;) === false) return null;
+	return Ti.App.Properties.getString(&#39;auth.driver&#39;);
+}
+exports.getCurrentDriver = getCurrentDriver;
+
+
+<span id='Auth-method-handleLogin'>/**
+</span> * Trigger the handleLogin on current-used driver
+ *
+ */
+function handleLogin() {
+	var currentDriver = getCurrentDriver();
+
+	if (currentDriver === null) {
+		Ti.API.warn(&#39;Auth: no driver stored to handle authentication&#39;);
+		return;
+	}
+
+	try {
+		return load(currentDriver).handleLogin();
+	} catch (err) {
+		Event.trigger(&#39;app.login&#39;, {
+			message: err
+		});
+	}
+}
+exports.handleLogin = handleLogin;
+
+
+<span id='Auth-method-handleOfflineLogin'>/**
+</span> * Try to login in offline mode, filling the user information from offline data
+ *
+ * Trigger an **app.login** event in case of no offline data is present
+ *
+ * Otherwise, an **auth.success** event is triggered
+ *
+ * @param  {Function} success Success callback
+ */
+function handleOfflineLogin(success){
+	if (Ti.App.Properties.hasProperty(&#39;auth.me&#39;) === false) {
+		Event.trigger(&#39;app.login&#39;);
+		return;
+	}
+
+	// Create the User model
+	exports.Me = Alloy.createModel(&#39;user&#39;, Ti.App.Properties.getObject(&#39;auth.me&#39;));
+
+	Event.trigger(&#39;auth.success&#39;);
+	if (_.isFunction(success)) success();
+}
+exports.handleOfflineLogin = handleOfflineLogin;
+
+
+<span id='Auth-method-handle'>/**
+</span> * Try to login, switching automatically to offline mode
+ * if an internet connection is not detected
+ *
+ * If fail, it fails silently
+ *
+ */
+function handle() {
+	if (HTTP.isOnline()) {
+		handleLogin();
+	} else {
+		handleOfflineLogin();
+	}
+}
+exports.handle = handle;
+
+
+function getUserModel(data, callback) {
+	exports.Me = Alloy.createModel(&#39;user&#39;, {
+		id: exports.authInfo.id
+	});
+
+	exports.Me.fetch({
+		http: {
+			refresh: true,
+			cache: false,
+			silent: data.silent
+		},
+		success: callback,
+		error: function(e){
+			Event.trigger(&#39;auth.fail&#39;, {
+				message: e.message,
+				silent: data.silent
+			});
+		}
+	});
+}
+
+
+<span id='Auth-method-login'>/**
+</span> * Login in the API server
+ *
+ * Trigger an *auth.fail* in case of fail
+ *
+ * Trigger an *auth.success* if success
+ *
+ * @param  {Object}   data   Data sent to the server
+ * @param  {String}   driver Driver used to login
+ * @param  {Function} callback     Success callback
+ */
+function login(data, driver, callback) {
+	HTTP.send({
+		url: &#39;/auth&#39;,
+		method: &#39;POST&#39;,
+		data: _.extend(data, { method: driver }),
+		silent: data.silent,
+		success: function(response){
+			exports.authInfo = response;
+
+			if (exports.authInfo.id != null) {
+
+				getUserModel(data, function() {
+					Ti.App.Properties.setObject(&#39;auth.me&#39;, exports.Me.toJSON());
+					Ti.App.Properties.setString(&#39;auth.driver&#39;, driver);
+					Event.trigger(&#39;auth.success&#39;, exports.authInfo);
+
+					if (_.isFunction(callback)) callback(exports.authInfo);
+				});
+
+			} else {
+
+				Ti.API.error(&#39;Auth: authInfo.id is null&#39;);
+				Event.trigger(&#39;auth.fail&#39;, {
+					message: L(&#39;auth_error&#39;),
+					silent: data.silent
+				});
+
+			}
+		},
+		error: function(e){
+			Event.trigger(&#39;auth.fail&#39;, {
+				message: e.message,
+				silent: data.silent
+			});
+		},
+	});
+}
+exports.login = login;
+
+
+<span id='Auth-method-getUser'>/**
+</span> * @method getUser
+ * Get current User model
+ * @return {Object}
+ */
+exports.getUser = function(){
+	return exports.Me;
+};
+
+<span id='Auth-method-user'>/**
+</span> * @method user
+ * @inheritDoc #getUser
+ * Alias for {@link #getUser}
+ */
+exports.user = exports.getUser;
+
+
+<span id='Auth-method-getUserID'>/**
+</span> * @method getUserID
+ * Get current User ID
+ * @return {Number}
+ */
+function getUserID(){
+	if (exports.Me == null) return 0;
+	return exports.Me.id;
+}
+exports.getUserID = getUserID;
+
+
+<span id='Auth-method-logout'>/**
+</span> * Logout calling &quot;current-driver&quot; logout, logout from the API server and empty all auth infos
+ *
+ * Trigger an *auth.logout* in any case when completed
+ *
+ * @param  {Function} callback Success callback
+ */
+function logout(callback) {
+	var id = getUserID();
+	var currentDriver = getCurrentDriver();
+
+	try {
+		load(currentDriver).logout();
+	} catch (err) {}
+
+	exports.Me = null;
+	exports.authInfo = null;
+
+	// Remove stored infos
+	Ti.App.Properties.removeProperty(&#39;auth.me&#39;);
+	Ti.App.Properties.removeProperty(&#39;auth.driver&#39;);
+
+	// Remove cache, because can contain sensibile data
+	HTTP.Cache.prune();
+
+	var onLogoutComplete = function() {
+		HTTP.resetCookies();
+		Event.trigger(&#39;auth.logout&#39;, { id: id });
+		if (_.isFunction(callback)) callback();
+	};
+
+	if (HTTP.isOnline()) {
+
+		HTTP.send({
+			url: &#39;/logout&#39;,
+			method: &#39;POST&#39;,
+			silent: true,
+			success: function(){},
+			error: function(){},
+			complete: onLogoutComplete
+		});
+
+	} else {
+		onLogoutComplete();
+	}
+
+}
+exports.logout = logout;
+
+
+<span id='Auth-method-isLogged'>/**
+</span> * Check if the user is logged in
+ *
+ * @return {Boolean}
+ */
+exports.isLogged = function() {
+	return exports.Me !== null;
+};
+</pre>
+</body>
+</html>

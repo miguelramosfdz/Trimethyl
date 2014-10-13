@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>The source code</title>
+  <link href="../resources/prettify/prettify.css" type="text/css" rel="stylesheet" />
+  <script type="text/javascript" src="../resources/prettify/prettify.js"></script>
+  <style type="text/css">
+    .highlight { display: block; background-color: #ddd; }
+  </style>
+  <script type="text/javascript">
+    function highlight() {
+      document.getElementById(location.hash.replace(/#/, "")).className = "highlight";
+    }
+  </script>
+</head>
+<body onload="prettyPrint(); highlight();">
+  <pre class="prettyprint lang-js"><span id='Sounds'>/**
+</span> * @class  Sounds
+ * @author  Flavio De Stefano &lt;flavio.destefano@caffeinalab.com&gt;
+ * UI Sounds interface
+ */
+
+<span id='Sounds-property-config'>/**
+</span> * @type {Object}
+ */
+var config = _.extend({
+}, Alloy.CFG.T.sounds);
+exports.config = config;
+
+
+var players = {};
+
+
+<span id='Sounds-method-create'>/**
+</span> * Create the `Ti.Media.Sound` and allocate for future play
+ * @param  {String} key The sound file to load
+ * @return {Ti.Media.Sound}
+ */
+function create(key) {
+	players[key] = Ti.Media.createSound({ url: key });
+	return players[key];
+}
+exports.create = create;
+
+
+<span id='Sounds-method-play'>/**
+</span> * Play the sound
+ * @param  {String} key The sound file to play
+ */
+function play(key) {
+	if (!(key in players)) create(key);
+	players[key].play();
+}
+exports.play = play;
+
+
+<span id='Sounds-method-pause'>/**
+</span> * Pause the sound
+ * @param  {String} key The sound file to pause
+ */
+function pause(key) {
+	if (!(key in players)) create(key);
+	players[key].pause();
+}
+exports.pause = pause;
+</pre>
+</body>
+</html>

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>The source code</title>
+  <link href="../resources/prettify/prettify.css" type="text/css" rel="stylesheet" />
+  <script type="text/javascript" src="../resources/prettify/prettify.js"></script>
+  <style type="text/css">
+    .highlight { display: block; background-color: #ddd; }
+  </style>
+  <script type="text/javascript">
+    function highlight() {
+      document.getElementById(location.hash.replace(/#/, "")).className = "highlight";
+    }
+  </script>
+</head>
+<body onload="prettyPrint(); highlight();">
+  <pre class="prettyprint lang-js"><span id='HTTP-Request'>/**
+</span> * @class  HTTP.Request
+ * @author  Flavio De Stefano &lt;flavio.destefano@caffeinalab.com&gt;
+ * HTTP Request class
+ */
+
+var HTTP = require(&#39;T/http&#39;);
+var Util = require(&#39;T/util&#39;);
+var Event = require(&#39;T/event&#39;);
+
+function extractHTTPData(data, info) {
+	if (info != null) {
+		if (info.format === &#39;json&#39;) return Util.parseJSON(data);
+	}
+	return data;
+}
+
+function extractHTTPErrorMessage(data, info) {
+	if (info != null &amp;&amp; data != null) {
+		if (info.format === &#39;json&#39;) {
+			if (_.isObject(data.error) &amp;&amp; _.isString(data.error.message)) return data.error.message;
+			if (_.isString(data.error)) return data.error;
+		}
+	}
+	return L(&#39;http_error&#39;);
+}
+
+function HTTPRequest(opt) {
+	if (opt.url == null) {
+		throw new Error(&#39;HTTP.Request: URL not set&#39;);
+	}
+
+	this.opt = _.clone(opt);
+
+	// if the url is not matching a protocol, assign the base URL
+	if (/\:\/\//.test(opt.url)) {
+		this.url = opt.url;
+	} else {
+		this.url = HTTP.config.base.replace(/\/$/, &#39;&#39;) + &#39;/&#39; + opt.url.replace(/^\//, &#39;&#39;);
+	}
+
+	this.method = this.method ? this.method.toUpperCase() : &#39;GET&#39;;
+	this.headers = _.extend({}, HTTP.config.headers, opt.headers);
+	this.timeout = opt.timeout !== undefined ? opt.timeout : HTTP.config.timeout;
+
+	this.onSuccess = _.isFunction(opt.success) ? opt.success : function(){};
+	this.onComplete = _.isFunction(opt.complete) ? opt.complete : function(){};
+
+	if (opt.error !== undefined) {
+		this.onError = _.isFunction(opt.error) ? opt.error : function(){};
+	} else {
+		this.onError = HTTP.errorHandler;
+	}
+
+	// Rebuild the URL if is a GET and there&#39;s data
+	if (opt.data != null) {
+		if (this.method === &#39;GET&#39; &amp;&amp; _.isObject(opt.data)) {
+			this.url = this.url + Util.buildQuery(opt.data);
+		} else {
+			this.data = opt.data;
+		}
+	}
+
+	this.hash = this._calculateHash();
+}
+
+HTTPRequest.prototype.toString = function() {
+	return this.hash;
+};
+
+HTTPRequest.prototype._maybeCacheResponse = function() {
+	if (HTTP.config.useCache === false) return;
+	if (this.opt.cache === false)
+	if (this.method !== &#39;GET&#39;) return;
+
+	if (this.responseInfo.ttl &lt;= 0) return;
+	if (this.client.responseText == null) return;
+
+	Ti.API.debug(&#39;HTTP: [&#39;+this.hash+&#39;] CACHED&#39;, {
+		expireOn: Util.timestampForHumans(Util.fromnow(this.responseInfo.ttl))
+	});
+
+	HTTP.Cache.set(this.hash, this.client.responseText, this.responseInfo.ttl, this.responseInfo);
+};
+
+HTTPRequest.prototype._getResponseInfo = function() {
+	if (this.client == null || this.client.readyState &lt;= 1) {
+		return { broken: true };
+	}
+
+	var httpExpires = this.client.getResponseHeader(&#39;Expires&#39;);
+	var httpContentType = this.client.getResponseHeader(&#39;Content-Type&#39;);
+	var httpTTL = this.client.getResponseHeader(&#39;X-Cache-Ttl&#39;);
+
+	var info = { format: &#39;blob&#39;, ttl: HTTP.config.defaultCacheTTL };
+
+	if (this.client.responseText != null) info.format = &#39;text&#39;;
+	if (/application\/json/.test(httpContentType)) info.format = &#39;json&#39;;
+
+	if (httpExpires != null) info.ttl = Util.timestamp(httpExpires) - Util.now();
+	if (httpTTL != null) info.ttl = httpTTL;
+
+	if (this.opt.format != null) info.format = this.opt.format;
+	if (this.opt.ttl != null) info.ttl = this.opt.ttl;
+
+	return info;
+};
+
+HTTPRequest.prototype._onComplete = function(e) {
+	this.endTime = new Date();
+
+	this.onComplete();
+	HTTP.removeFromQueue(this);
+
+	Ti.API.debug(&#39;HTTP: [&#39;+this.hash+&#39;] COMPLETE&#39;, {
+		networkTime: (this.endTime.getTime()-this.startTime.getTime())+&#39;ms&#39;,
+		status: this.client.status
+	});
+
+	// Fire the global event
+	if (this.opt.silent !== true) {
+		Event.trigger(&#39;http.end&#39;, {
+			hash: this.hash,
+			eventName: this.opt.eventName
+		});
+	}
+
+	this.responseInfo = this._getResponseInfo();
+
+	// If the readyState is not DONE, trigger error, because
+	// client.onload is the function to be called upon a SUCCESSFULL response.
+	if (this.responseInfo.broken === true) {
+		Ti.API.error(&#39;HTTP: [&#39;+this.hash+&#39;] IS BROKEN&#39;);
+		return this.onError();
+	}
+
+	// Get the response information and override
+	Ti.API.debug(&#39;HTTP: [&#39;+this.hash+&#39;] PARSED&#39;, this.responseInfo);
+
+	var httpData = extractHTTPData(this.client.responseText, this.responseInfo);
+	if (e.success === false || httpData == null) {
+		var errObject = {
+			message: extractHTTPErrorMessage(httpData, this.responseInfo),
+			code: this.client.status
+		};
+
+		Ti.API.error(&#39;HTTP: [&#39;+this.hash+&#39;] ERROR&#39;, errObject);
+		this.onError(errObject);
+
+		return;
+	}
+
+	// Write the cache (if needed and supported by configuration)
+	this._maybeCacheResponse();
+
+	Ti.API.debug(&#39;HTTP: [&#39;+this.hash+&#39;] SUCCESS&#39;);
+	this.onSuccess(httpData);
+};
+
+HTTPRequest.prototype._calculateHash = function() {
+	var hash = this.url + Util.hashJavascriptObject(this.data) + Util.hashJavascriptObject(this.headers);
+	return &#39;net_&#39; + Ti.Utils.md5HexDigest(hash).substr(0, 10);
+};
+
+<span id='HTTP-Request-method-getCachedResponse'>/**
+</span> * @method getCachedResponse
+ * Return (if exists) the cache
+ * @return {Object}
+ */
+HTTPRequest.prototype.getCachedResponse = function() {
+	if (HTTP.config.useCache === false) return;
+	if (this.opt.cache === false || this.opt.refresh === true) return;
+	if (this.method !== &#39;GET&#39;) return;
+
+	var cachedData = HTTP.Cache.get(this.hash);
+	if (cachedData == null) return;
+
+	Ti.API.debug(&#39;HTTP: [&#39;+this.hash+&#39;] CACHE SUCCESS&#39;, {
+		expireOn: Util.timestampForHumans(cachedData.expire),
+		remainTime: (cachedData.expire-Util.now())+&#39;s&#39;
+	});
+
+	return extractHTTPData(cachedData.value, cachedData.info);
+};
+
+<span id='HTTP-Request-method-send'>/**
+</span> * @method send
+ * Sent the request over the network
+ */
+HTTPRequest.prototype.send = function() {
+	this.client = Ti.Network.createHTTPClient({
+		timeout: this.timeout,
+		cache: false,
+	});
+
+	var self = this;
+	this.client.onload = this.client.onerror = function(e) {
+		self._onComplete(e);
+	};
+
+	// Add this request to the queue
+	HTTP.addToQueue(this);
+
+	if (this.opt.silent !== true) {
+		Event.trigger(&#39;http.start&#39;, {
+			hash: this.hash,
+			eventName: this.opt.eventName
+		});
+	}
+
+	// Set headers
+	this.client.open(this.method, this.url);
+	_.each(this.headers, function(h, k) {
+		this.client.setRequestHeader(k, h);
+	});
+
+	// Send the request over Internet
+	this.startTime = new Date();
+	if (this.data != null) {
+		this.client.send(this.data);
+	} else {
+		this.client.send();
+	}
+
+	Ti.API.debug(&#39;HTTP: [&#39;+this.hash+&#39;] SENT&#39;);
+};
+
+<span id='HTTP-Request-method-resolve'>/**
+</span> * @method resolve
+ *
+ * Magically resolve the request.
+ * It checks cache, connectivity, and resolve.
+ */
+HTTPRequest.prototype.resolve = function() {
+	var cache = this.getCachedResponse();
+	if (cache != null) {
+		this.onComplete();
+		this.onSuccess(cache);
+		return;
+	}
+
+	if (HTTP.isOnline()) {
+		this.send();
+		return;
+	}
+
+	Ti.API.error(&#39;HTTP: connection is offline&#39;);
+	if (HTTP.config.autoOfflineMessage === true) {
+		require(&#39;T/dialog&#39;).alert(L(&#39;http_offline_title&#39;), L(&#39;http_offline_message&#39;));
+	}
+
+	this.onComplete();
+	this.onError({
+		message: L(&#39;http_offline_message&#39;)
+	});
+
+	Event.trigger(&#39;http.offline&#39;);
+};
+
+module.exports = HTTPRequest;
+</pre>
+</body>
+</html>

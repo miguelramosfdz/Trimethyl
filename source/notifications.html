@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>The source code</title>
+  <link href="../resources/prettify/prettify.css" type="text/css" rel="stylesheet" />
+  <script type="text/javascript" src="../resources/prettify/prettify.js"></script>
+  <style type="text/css">
+    .highlight { display: block; background-color: #ddd; }
+  </style>
+  <script type="text/javascript">
+    function highlight() {
+      document.getElementById(location.hash.replace(/#/, "")).className = "highlight";
+    }
+  </script>
+</head>
+<body onload="prettyPrint(); highlight();">
+  <pre class="prettyprint lang-js"><span id='Notifications'>/**
+</span> * @class  Notifications
+ * @author  Flavio De Stefano &lt;flavio.destefano@caffeinalab.com&gt;
+ * Handle notifications system for both platform
+ */
+
+
+<span id='Notifications-property-config'>/**
+</span> * * **autoReset**: Check if auto-reset the badge when app is open.
+ * * **driver**: The driver to use. Default: `cloud`
+ * @type {Object}
+ */
+var config = _.extend({
+	autoReset: true,
+	driver: &#39;cloud&#39;,
+}, Alloy.CFG.T.notifications);
+exports.config = config;
+
+var Event = require(&#39;T/event&#39;);
+var inBackground = false;
+
+<span id='Notifications-method-load'>/**
+</span> * Require the selected driver
+ *
+ * @param  {String} driver The driver
+ * @return {Object}
+ */
+function load(driver) {
+	return require(&#39;T/notifications/&#39;+driver);
+}
+exports.load = load;
+
+
+function onNotificationReceived(e) {
+	if (OS_ANDROID) {
+
+		// Android trigger two types of callback
+		// When the app is in background, the type is !== &#39;callback&#39;
+		// So, we simply save the state inBackground and return
+		// because the notification.received event must NOT be triggered
+		if (e.type !== &#39;callback&#39;) {
+			inBackground = true;
+			return;
+		}
+
+		if (e.payload != null) {
+
+			// Do this to balance the difference in APIs (convert Android to IOS, in substance)
+			e.data = require(&#39;T/util&#39;).parseJSON(e.payload);
+			if (e.data.android != null) {
+				_.extend(e.data, e.data.android);
+				delete e.data.android;
+			}
+
+			// Set the property inBackground from the last state
+			// and reset to false to prevent double events (simple semaphore)
+			e.inBackground = inBackground;
+			inBackground = false;
+		}
+	}
+
+	if (config.autoReset) {
+		resetBadge();
+	}
+
+	Event.trigger(&#39;notifications.received&#39;, e);
+}
+
+
+var subscribeFunction = null;
+var unsubscribeFunction = null;
+
+if (OS_IOS) {
+
+	subscribeFunction = function(callback) {
+		Ti.Network.registerForPushNotifications({
+			callback: onNotificationReceived,
+			types: [ Ti.Network.NOTIFICATION_TYPE_BADGE, Ti.Network.NOTIFICATION_TYPE_ALERT, Ti.Network.NOTIFICATION_TYPE_SOUND ],
+			success: function(e) {
+				callback(e.deviceToken);
+			},
+			error: function(e){
+				Ti.API.error(&#39;Notifications: Retrieve device token failed&#39;, e);
+				Event.trigger(&#39;notifications.subscription.error&#39;, e);
+			},
+		});
+	};
+
+	unsubscribeFunction = function(){
+		Ti.Network.unregisterForPushNotifications();
+	};
+
+} else if (OS_ANDROID) {
+
+	var CloudPush = require(&#39;ti.cloudpush&#39;);
+	CloudPush.debug = !ENV_PRODUCTION;
+	CloudPush.singleCallback = true;
+	CloudPush.showAppOnTrayClick = true;
+
+	// iOS Style, allow only background system-wide notifications
+	CloudPush.showTrayNotification = true;
+	CloudPush.showTrayNotificationsWhenFocused = false;
+
+	subscribeFunction = function(callback) {
+		// add a series of callback on the same functions, and set values inset
+		CloudPush.addEventListener(&#39;callback&#39;, onNotificationReceived);
+		CloudPush.addEventListener(&#39;trayClickLaunchedApp&#39;, onNotificationReceived);
+		CloudPush.addEventListener(&#39;trayClickFocusedApp&#39;, onNotificationReceived);
+
+		CloudPush.retrieveDeviceToken({
+			success: function(e) {
+				callback(e.deviceToken);
+			},
+			error: function(e) {
+				Ti.API.error(&#39;Notifications: Retrieve device token failed&#39;, e);
+				Event.trigger(&#39;notifications.subscription.error&#39;, e);
+			}
+		});
+	};
+
+	unsubscribeFunction = function(){
+		CloudPush.removeEventListener(&#39;callback&#39;, onNotificationReceived);
+		CloudPush.removeEventListener(&#39;trayClickLaunchedApp&#39;, onNotificationReceived);
+		CloudPush.removeEventListener(&#39;trayClickFocusedApp&#39;, onNotificationReceived);
+	};
+
+}
+
+
+<span id='Notifications-method-subscribe'>/**
+</span> * Subscribe for that channell
+ * @param  {String} channel Channel name
+ */
+function subscribe(channel) {
+	subscribeFunction(function(token) {
+		load(config.driver).subscribe(token, channel, function(){
+			Ti.API.debug(&#39;Notifications: Subscribtion OK with driver &#39; + config.driver);
+		});
+	});
+}
+exports.subscribe = subscribe;
+
+
+<span id='Notifications-method-unsubscribe'>/**
+</span> * Unsubscribe for that channel
+ * @param  {String} channel Channel name
+ */
+function unsubscribe(channel) {
+	load(config.driver).unsubscribe(channel);
+}
+exports.unsubscribe = unsubscribe;
+
+
+<span id='Notifications-method-setBadge'>/**
+</span> * Set the App badge value
+ * @param {Number} x
+ */
+function setBadge(x) {
+	if (OS_IOS) {
+		Ti.UI.iPhone.setAppBadge(Math.max(x,0));
+	} else if (OS_ANDROID) {
+		// TODO
+	}
+}
+exports.setBadge = setBadge;
+
+
+<span id='Notifications-method-getBadge'>/**
+</span> * Get the App badge value
+ * @return {Number}
+ */
+function getBadge() {
+	if (OS_IOS) {
+		return Ti.UI.iPhone.getAppBadge();
+	} else if (OS_ANDROID) {
+		// TODO
+	}
+}
+exports.getBadge = getBadge;
+
+
+function resetBadge() {
+	setBadge(0);
+}
+
+
+<span id='Notifications-method-incBadge'>/**
+</span> * Increment the badge app
+ * @param  {Number} i The value to increment
+ */
+function incBadge(i) {
+	setBadge(getBadge() + i);
+}
+exports.incBadge = incBadge;
+
+
+
+/*
+Init
+*/
+
+if (config.autoReset) {
+	resetBadge();
+	Ti.App.addEventListener(&#39;resumed&#39;, resetBadge);
+}
+</pre>
+</body>
+</html>

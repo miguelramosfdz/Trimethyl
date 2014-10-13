@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>The source code</title>
+  <link href="../resources/prettify/prettify.css" type="text/css" rel="stylesheet" />
+  <script type="text/javascript" src="../resources/prettify/prettify.js"></script>
+  <style type="text/css">
+    .highlight { display: block; background-color: #ddd; }
+  </style>
+  <script type="text/javascript">
+    function highlight() {
+      document.getElementById(location.hash.replace(/#/, "")).className = "highlight";
+    }
+  </script>
+</head>
+<body onload="prettyPrint(); highlight();">
+  <pre class="prettyprint lang-js"><span id='Auth-Facebook'>/**
+</span> * @class  Auth.Facebook
+ * @author  Flavio De Stefano &lt;flavio.destefano@caffeinalab.com&gt;
+ * Auth driver to handle Facebook authentication
+ */
+
+<span id='Auth-Facebook-property-config'>/**
+</span> * * **appid**: Application ID. Default: `null`
+ * * **permissions**: Array of permissions. Default: `[]`
+ * * **authTimeout**: Timeout for logging in
+ * @type {Object}
+ */
+var config = _.extend({
+	appid: null,
+	permissions: [],
+	authTimeout: 10000
+}, Alloy.CFG.T.auth ? Alloy.CFG.T.auth.facebook : {});
+exports.config = config;
+
+var FB = require(&#39;facebook&#39;);
+var Auth = require(&#39;T/auth&#39;);
+
+var authorized = false; // Flag to stop iOS automatic login on app startup
+var timeout = null; // Timeout for logging in
+var successLogin = null; // Callback when login success
+var silent = true; // Flag passed to `Auth.login` and `auth.fail` event
+
+
+function loginToServer(e) {
+	clearTimeout(timeout);
+	if (e.cancelled === true) return;
+
+	if (e.success !== true) {
+		Ti.API.error(&#39;Auth.Facebook: ERROR&#39;, e);
+
+		require(&#39;T/event&#39;).trigger(&#39;auth.fail&#39;, {
+			silent: silent,
+			message: L(&#39;auth_facebook_error&#39;)
+		});
+		return;
+	}
+
+	Ti.API.debug(&#39;Auth.Facebook: SUCCESS&#39;, e);
+	Auth.login({
+		access_token: FB.accessToken,
+		silent: silent
+	}, &#39;facebook&#39;, successLogin);
+}
+
+function authorize() {
+	if (FB.loggedIn === true &amp;&amp; ! _.isEmpty(FB.accessToken)) {
+		loginToServer({ success: true });
+	} else {
+		authorized = true;
+		FB.authorize();
+	}
+}
+
+<span id='Auth-Facebook-method-handleLogin'>/**
+</span> * Login using Facebook SDK and make the request to the API server, silently
+ */
+function handleLogin() {
+	silent = true;
+	authorized = false;
+
+	// Prevent app freezing
+	timeout = setTimeout(function(){
+		loginToServer({ success: false });
+	}, config.authTimeout);
+
+	authorize();
+}
+exports.handleLogin = handleLogin;
+
+
+<span id='Auth-Facebook-method-login'>/**
+</span> * Login using Facebook SDK and make the request to the API server
+ *
+ * @param  {Function} success Callback when login success
+ */
+function login(success){
+	silent = false;
+	successLogin = success;
+
+	authorize();
+}
+exports.login = login;
+
+
+<span id='Auth-Facebook-method-logout'>/**
+</span> * Remove any stored user data
+ */
+function logout() {
+	FB.logout();
+}
+exports.logout = logout;
+
+
+/*
+Init
+*/
+
+FB.forceDialogAuth = false;
+
+if (FB.appid == null) {
+	if (config.appid != null) {
+		FB.appid = config.appid;
+	} else if (Ti.App.Properties.hasProperty(&#39;ti.facebook.appid&#39;)) {
+		FB.appid = Ti.App.Properties.getString(&#39;ti.facebook.appid&#39;, false);
+	} else {
+		Ti.API.warn(&#39;Auth.Facebook: Please specify a Facebook AppID&#39;);
+	}
+}
+
+if (config.permissions != null) {
+	FB.permissions = _.isArray(config.permissions) ? config.permissions : config.permissions.split(&#39;,&#39;);
+}
+
+FB.addEventListener(&#39;login&#39;, function(e){
+	// by checking the `authorized` flag,
+	// we are sure that loginToServer is NOT called automatically on startup.
+	// This is a security hack caused by iOS SDK that
+	// automatically trigger the login event
+	if (authorized === false) {
+		Ti.API.debug(&#39;Auth.Facebook: login prevented due authorized flag&#39;);
+		return;
+	}
+
+	// If there&#39;s an error, and the user hasn&#39;t cancelled login,
+	// try the legacy mode of Facebook login on next Login,
+	// that we are SURE that works.
+	if (e.error === true &amp;&amp; e.cancelled === false) {
+		Ti.API.warn(&#39;Auth.Facebook: enabling the legacy mode of Facebook login due error&#39;);
+		FB.forceDialogAuth = true;
+	}
+
+	loginToServer(e);
+});
+</pre>
+</body>
+</html>

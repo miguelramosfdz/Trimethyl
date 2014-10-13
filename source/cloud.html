@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>The source code</title>
+  <link href="../resources/prettify/prettify.css" type="text/css" rel="stylesheet" />
+  <script type="text/javascript" src="../resources/prettify/prettify.js"></script>
+  <style type="text/css">
+    .highlight { display: block; background-color: #ddd; }
+  </style>
+  <script type="text/javascript">
+    function highlight() {
+      document.getElementById(location.hash.replace(/#/, "")).className = "highlight";
+    }
+  </script>
+</head>
+<body onload="prettyPrint(); highlight();">
+  <pre class="prettyprint lang-js"><span id='Notifications-Cloud'>/**
+</span> * @class  Notifications.Cloud
+ * @author  Flavio De Stefano &lt;flavio.destefano@caffeinalab.com&gt;
+ * Appcellerator ACS driver for notifications
+ *
+ * You must set this properties in `tiapp.xml`
+ *
+ * ```
+ * &lt;property name=&quot;acs-api-key-development&quot; type=&quot;string&quot;&gt;...&lt;/property&gt;
+ * &lt;property name=&quot;acs-oauth-key-development&quot; type=&quot;string&quot;&gt;...&lt;/property&gt;
+ * &lt;property name=&quot;acs-oauth-secret-development&quot; type=&quot;string&quot;&gt;...&lt;/property&gt;
+ * &lt;property name=&quot;acs-api-key-production&quot; type=&quot;string&quot;&gt;...&lt;/property&gt;
+ * &lt;property name=&quot;acs-oauth-key-production&quot; type=&quot;string&quot;&gt;...&lt;/property&gt;
+ * &lt;property name=&quot;acs-oauth-secret-production&quot; type=&quot;string&quot;&gt;...&lt;/property&gt;
+ * ```
+ *
+ */
+
+
+<span id='Notifications-Cloud-property-config'>/**
+</span> * @type {Object}
+ */
+var config = _.extend({
+}, Alloy.CFG.T.notifications ? Alloy.CFG.T.notifications.cloud : {});
+exports.config = config;
+
+
+var Cloud = require(&#39;ti.cloud&#39;);
+Cloud.debug = !ENV_PRODUCTION;
+
+
+<span id='Notifications-Cloud-method-subscribe'>/**
+</span> * Send the API request to the ACS to subscribe
+ *
+ * @param  {String}   deviceToken 	The device token
+ * @param  {String}   [channel]     The channel name
+ * @param  {Function} [callback]    The callback
+ */
+function subscribe(deviceToken, channel, callback) {
+	Ti.App.Properties.setString(&#39;notifications.token&#39;, deviceToken);
+
+	Cloud.PushNotifications.subscribeToken({
+		device_token: deviceToken,
+		channel: channel || &#39;none&#39;,
+		type: (OS_IOS ? &#39;ios&#39; : (OS_ANDROID ? &#39;gcm&#39; : &#39;&#39;))
+	}, function (e) {
+		if (e.success === false) {
+			Ti.API.error(&#39;Notifications.Cloud: &#39;, e);
+
+			require(&#39;T/event&#39;).trigger(&#39;notifications.subscription.error&#39;, e);
+			return;
+		}
+
+		require(&#39;T/event&#39;).trigger(&#39;notifications.subscription.success&#39;, {
+			channel: channel
+		});
+		if (_.isFunction(callback)) callback();
+	});
+}
+exports.subscribe = subscribe;
+
+
+<span id='Notifications-Cloud-method-unsubscribe'>/**
+</span> * Send the API request to the ACS to unsubscribe from that channel
+ *
+ * @param  {String} channel
+ */
+function unsubscribe(channel) {
+	var token = Ti.App.Properties.getString(&#39;notifications.token&#39;);
+	if (_.isEmpty(token)) {
+		Ti.API.error(&#39;Notifications.Cloud: Error while getting notification token in subscribing&#39;);
+		return;
+	}
+
+	Ti.App.Properties.removeProperty(&#39;notifications.token&#39;);
+	Cloud.PushNotifications.unsubscribeToken({
+		device_token: token,
+		channel: channel || null
+	}, function() {
+		Ti.API.debug(&#39;Notifications.Cloud: Unsubscribing success&#39;);
+	});
+}
+exports.unsubscribe = unsubscribe;
+</pre>
+</body>
+</html>

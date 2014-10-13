@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>The source code</title>
+  <link href="../resources/prettify/prettify.css" type="text/css" rel="stylesheet" />
+  <script type="text/javascript" src="../resources/prettify/prettify.js"></script>
+  <style type="text/css">
+    .highlight { display: block; background-color: #ddd; }
+  </style>
+  <script type="text/javascript">
+    function highlight() {
+      document.getElementById(location.hash.replace(/#/, "")).className = "highlight";
+    }
+  </script>
+</head>
+<body onload="prettyPrint(); highlight();">
+  <pre class="prettyprint lang-js"><span id='Auth-Std'>/**
+</span> * @class  Auth.Std
+ * @author  Flavio De Stefano &lt;flavio.destefano@caffeinalab.com&gt;
+ * Auth driver to handle Standard authentication
+ */
+
+var HTTP = require(&#39;T/http&#39;);
+var Auth = require(&#39;T/auth&#39;);
+
+
+<span id='Auth-Std-method-handleLogin'>/**
+</span> * Login to the API server using stored data
+ */
+function handleLogin(){
+	var data = Ti.App.Properties.getObject(&#39;auth.std.data&#39;) || {};
+	data.silent = true;
+
+	Auth.login(data, &#39;std&#39;);
+}
+exports.handleLogin = handleLogin;
+
+
+<span id='Auth-Std-method-login'>/**
+</span> * Login to the API server
+ *
+ * @param {Object} 		data 		Data passed to API
+ * @param  {Function} 	success 	Callback when login success
+ */
+function login(data, success) {
+	Auth.login(data, &#39;std&#39;, function(){
+		Ti.App.Properties.setObject(&#39;auth.std.data&#39;, data);
+		if (_.isFunction(success)) success();
+	});
+}
+exports.login = login;
+
+
+<span id='Auth-Std-method-logout'>/**
+</span> * Remove any user data
+ */
+function logout(){
+	Ti.App.Properties.removeProperty(&#39;auth.std.data&#39;);
+}
+exports.logout = logout;
+
+
+<span id='Auth-Std-method-signup'>/**
+</span> * Signup to the API server
+ *
+ * @param  {Object}   data Data passed to API
+ * @param  {Function} callback   Success callback
+ */
+function signup(data, callback) {
+	HTTP.send({
+		url: &#39;/signup&#39;,
+		method: &#39;POST&#39;,
+		data: data,
+		success: callback
+	});
+}
+exports.signup = signup;
+
+
+<span id='Auth-Std-method-lost'>/**
+</span> * Send the *password lost* request to the API server
+ *
+ * @param  {Object}   data Data passed to API
+ * @param  {Function} cb   Success callback
+ */
+function lost(data, callback){
+	HTTP.send({
+		url: &#39;/lost&#39;,
+		method: &#39;POST&#39;,
+		data: data,
+		success: callback
+	});
+}
+exports.lost = lost;
+
+<span id='Auth-Std-method-reset'>/**
+</span> * @method reset
+ * @inheritDoc #lost
+ * Alias for {@link #lost}
+ */
+exports.reset = lost;
+</pre>
+</body>
+</html>
